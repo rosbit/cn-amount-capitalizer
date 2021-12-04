@@ -147,21 +147,17 @@ func convertGroups(c <-chan *dataGroup, sAmount string, isNeg bool) (<-chan stri
 			for i, idx := gStart, gEnd - gStart - 1; i<gEnd; i, idx = i+1, idx-1 {
 				d := sAmount[i]
 				if d == '0' {
-					if !prevZero {
-						prevZero = true
-					}
+					prevZero = true
 					continue
 				}
 
-				if allZero {
-					allZero = false
-				} else if prevZero {
+				if !allZero && prevZero {
 					res <- sep
 				}
 
 				res <- digits[d - '0']
 				res <- bases[idx]
-				prevZero, prevGroupAllZero = false, false
+				allZero, prevZero, prevGroupAllZero = false, false, false
 			}
 			if !prevGroupAllZero || (dg.lastInt && !allZero) {
 				res <- unit
