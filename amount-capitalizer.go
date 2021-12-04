@@ -162,7 +162,8 @@ func convert(sAmount string, isNeg bool) (<-chan string) {
 
 			if allZero {
 				res <- zero
-			} else if gAllZero || intLength == length {
+			}
+			if gAllZero || intLength == length {
 				res <- ending
 			}
 			break
