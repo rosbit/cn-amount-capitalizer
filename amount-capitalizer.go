@@ -76,6 +76,7 @@ type dataGroup struct {
 	start, end int
 	bases []string
 	unit    string
+	lastInt bool
 }
 
 func convert(sAmount string, isNeg bool) (<-chan string) {
@@ -112,6 +113,7 @@ func convert(sAmount string, isNeg bool) (<-chan string) {
 				end: gEnd,
 				bases: intBases,
 				unit: units[nGroup],
+				lastInt: gEnd>=intLength,
 			}
 			gStart = gEnd
 			gEnd += intCount
@@ -161,7 +163,7 @@ func convertGroups(c <-chan *dataGroup, sAmount string, isNeg bool) (<-chan stri
 				res <- bases[idx]
 				prevZero, prevGroupAllZero = false, false
 			}
-			if !allZero {
+			if !prevGroupAllZero || dg.lastInt {
 				res <- unit
 			}
 		}
