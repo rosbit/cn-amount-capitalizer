@@ -1,7 +1,7 @@
 // 大写数字生成器
 // 单位:
 //   "",  拾,   佰,   仟
-//   圆
+//   元
 //   万 
 //   亿
 //   万亿
@@ -14,28 +14,35 @@
 package cnamount
 
 import (
+	"reflect"
 	"fmt"
 	"strings"
 )
 
 var (
-	units = []string{"圆", "万", "亿", "万亿", "万万亿"/*, ...*/}  // 更大的数字单位虽然可以往后增加，但float64已经不精准了
+	units = []string{"元", "万", "亿", "万亿", "万万亿"/*, ...*/}  // 更大的数字单位虽然可以往后增加，但float64已经不精准了
 	intBases = []string{"", "拾", "佰", "仟"}
 	digits = []string{"零","壹","贰","叁","肆","伍","陆","柒","捌","玖"}
 	fracBases = []string{/*..., */"分", "角"} // 更小的金额单位可往前面增加
 	ending = "整"
-	zero = "零圆"
+	zero = "零元"
 	sep = "零"
+	neg = "负"
 	tooLarge = "超大数额"
+	tooSmall = "超小数额"
+	unsupporting = "数据类型不支持"
 
 	intCount = len(intBases)
 )
 
 // 把数字金额转换成中文大写金额
-func ToCNAmount(amount float64) string {
-	floatFormat := fmt.Sprintf("%%.%df", len(fracBases))
-	sAmount := fmt.Sprintf(floatFormat, amount)
-	res := convert(sAmount)
+func ToCNAmount(amount interface{}) string {
+	sAmount, isNeg, ok := FormatAmount(amount)
+	if !ok {
+		return sAmount
+	}
+
+	res := convert(sAmount, isNeg)
 	r := &strings.Builder{}
 	for d := range res {
 		r.WriteString(d)
@@ -43,9 +50,36 @@ func ToCNAmount(amount float64) string {
 	return r.String()
 }
 
-func convert(sAmount string) (<-chan string) {
+func FormatAmount(amount interface{}) (sAmount string, isNeg, ok bool) {
+	switch amount.(type) {
+	case int, int8, int16, int32, int64:
+		a := reflect.ValueOf(amount).Int()
+		isNeg = a < 0
+		sAmount = fmt.Sprintf("%d", a)
+	case uint, uint8, uint16, uint32, uint64:
+		sAmount = fmt.Sprintf("%v", amount)
+	case float64, float32:
+		a := reflect.ValueOf(amount).Float()
+		isNeg = a < 0.0
+		floatFormat := fmt.Sprintf("%%.%df", len(fracBases))
+		sAmount = fmt.Sprintf(floatFormat, a)
+	default:
+		sAmount = unsupporting
+		return
+	}
+	ok = true
+	return
+}
+
+func convert(sAmount string, isNeg bool) (<-chan string) {
+	if isNeg {
+		sAmount = sAmount[1:]
+	}
 	length := len(sAmount)
 	intLength := strings.IndexByte(sAmount, '.')
+	if intLength < 0 {
+		intLength = length
+	}
 
 	var gStart, gEnd int
 	var unit string
@@ -68,11 +102,19 @@ func convert(sAmount string) (<-chan string) {
 	go func() {
 		defer close(res)
 		if nGroup >= len(units) {
-			res <- tooLarge
+			if isNeg {
+				res <- tooSmall
+			} else {
+				res <- tooLarge
+			}
 			return
 		}
 		if nGroup >= 0 {
 			unit = units[nGroup]
+		}
+
+		if isNeg {
+			res <- neg
 		}
 
 		prevZero := false
@@ -96,8 +138,7 @@ func convert(sAmount string) (<-chan string) {
 
 				res <- digits[d - '0']
 				res <- bases[idx]
-				prevZero = false
-				gAllZero = false
+				prevZero, gAllZero = false, false
 			}
 			if !allZero {
 				res <- unit
@@ -121,7 +162,7 @@ func convert(sAmount string) (<-chan string) {
 
 			if allZero {
 				res <- zero
-			} else if gAllZero {
+			} else if gAllZero || intLength == length {
 				res <- ending
 			}
 			break
