@@ -163,7 +163,7 @@ func convertGroups(c <-chan *dataGroup, sAmount string, isNeg bool) (<-chan stri
 				res <- bases[idx]
 				prevZero, prevGroupAllZero = false, false
 			}
-			if !prevGroupAllZero || dg.lastInt {
+			if !prevGroupAllZero || (dg.lastInt && !allZero) {
 				res <- unit
 			}
 		}
