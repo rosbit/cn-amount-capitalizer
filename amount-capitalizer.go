@@ -1,6 +1,6 @@
 // 大写数字生成器
 // 单位:
-//   "",  拾,   佰,   仟
+//       "",  拾,   佰,   仟
 //   元
 //   万 
 //   亿
@@ -50,6 +50,7 @@ func ToCNAmount(amount interface{}) string {
 	return r.String()
 }
 
+// 数字型值转为字符串
 func FormatAmount(amount interface{}) (sAmount string, isNeg, ok bool) {
 	switch amount.(type) {
 	case int, int8, int16, int32, int64:
@@ -71,6 +72,12 @@ func FormatAmount(amount interface{}) (sAmount string, isNeg, ok bool) {
 	return
 }
 
+type dataGroup struct {
+	start, end int
+	bases []string
+	unit    string
+}
+
 func convert(sAmount string, isNeg bool) (<-chan string) {
 	if isNeg {
 		sAmount = sAmount[1:]
@@ -81,46 +88,60 @@ func convert(sAmount string, isNeg bool) (<-chan string) {
 		intLength = length
 	}
 
-	var gStart, gEnd int
-	var unit string
-	bases := intBases
 	nGroup := intLength / intCount
-	remLen := intLength % intCount
-	if remLen > 0 {
+	gEnd := intLength % intCount
+	if gEnd > 0 {
 		nGroup += 1
-		gEnd = remLen
-	} else if nGroup == 0 {
-		gStart = intLength + 1
-		gEnd = length
-		bases = fracBases
-	} else {
+	} else if nGroup > 0 {
 		gEnd = intCount
 	}
-	nGroup -= 1
+	if nGroup > len(units) {
+		return makeTooLarge(isNeg)
+	}
 
+	groups := make(chan *dataGroup)
+	res := convertGroups(groups, sAmount, isNeg)
+
+	go func() {
+		defer close(groups)
+
+		nGroup -= 1
+		for gStart := 0; nGroup >= 0; nGroup-- {
+			groups <- &dataGroup {
+				start: gStart,
+				end: gEnd,
+				bases: intBases,
+				unit: units[nGroup],
+			}
+			gStart = gEnd
+			gEnd += intCount
+		}
+		groups <- &dataGroup{
+			start: intLength + 1,
+			end: length,
+			bases: fracBases,
+		}
+	}()
+
+	return res
+}
+
+func convertGroups(c <-chan *dataGroup, sAmount string, isNeg bool) (<-chan string) {
 	res := make(chan string)
+
 	go func() {
 		defer close(res)
-		if nGroup >= len(units) {
-			if isNeg {
-				res <- tooSmall
-			} else {
-				res <- tooLarge
-			}
-			return
-		}
-		if nGroup >= 0 {
-			unit = units[nGroup]
-		}
-
 		if isNeg {
 			res <- neg
 		}
 
 		prevZero := false
 		allZero := true
-		for gStart < length {
-			gAllZero := true
+		prevGroupAllZero := true
+
+		for dg := range c {
+			prevGroupAllZero = true
+			gStart, gEnd, bases, unit := dg.start, dg.end, dg.bases, dg.unit
 			for i, idx := gStart, gEnd - gStart - 1; i<gEnd; i, idx = i+1, idx-1 {
 				d := sAmount[i]
 				if d == '0' {
@@ -138,38 +159,33 @@ func convert(sAmount string, isNeg bool) (<-chan string) {
 
 				res <- digits[d - '0']
 				res <- bases[idx]
-				prevZero, gAllZero = false, false
+				prevZero, prevGroupAllZero = false, false
 			}
 			if !allZero {
 				res <- unit
 			}
+		}
 
-			gStart = gEnd
-			if gStart < intLength {
-				gEnd += intCount
-				nGroup -= 1
-				unit = units[nGroup]
-				continue
-			}
-
-			gStart += 1
-			if gStart < length {
-				gEnd = length
-				bases = fracBases
-				unit = ""
-				continue
-			}
-
-			if allZero {
-				res <- zero
-			}
-			if gAllZero || intLength == length {
-				res <- ending
-			}
-			break
+		if allZero {
+			res <- zero
+		}
+		if prevGroupAllZero {
+			res <- ending
 		}
 	}()
 
 	return res
 }
 
+func makeTooLarge(isNeg bool) (<-chan string) {
+	res := make(chan string)
+	go func() {
+		defer close(res)
+		if isNeg {
+			res <- tooSmall
+		} else {
+			res <- tooLarge
+		}
+	}()
+	return res
+}
