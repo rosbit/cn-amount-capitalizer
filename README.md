@@ -2,6 +2,7 @@
 
  - 可以转换到`万万亿`级别
  - 如有需要，可以在单位中追加更高级别
+ - 该项目已停止更新，所有功能已经合并到[cn-capitalizer](https://github.com/rosbit/cn-capitalizer).
 
 ### 使用方法
  - 见测试程序`a_test.go`
